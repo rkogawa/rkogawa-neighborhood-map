@@ -1,0 +1,24 @@
+html,
+body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+#map {
+    height: 100%;
+}
+
+.marker-filter {
+    position: absolute;
+    top: 0px;
+    right: 10px;
+    z-index: 99;
+    height: 32px;
+}
+
+.info-window-image {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}

@@ -5,32 +5,33 @@ var markers = [];
 let neighborhoodLat = -23.570664;
 let neighborhoodLng = -46.644500;
 
+let infowindow;
+
 /** Initialize the map based on initial lat/lng, create markers and filter. */
-window.initMap = function() {
+window.initMap = function () {
     map = new google.maps.Map(document.getElementById('map'), {
         center: { lat: neighborhoodLat, lng: neighborhoodLng },
-        zoom: 18,
+        zoom: 13,
     });
 
-    searchMarkers('Japan House São Paulo');
+    infowindow = new google.maps.InfoWindow({});
 
-    createMarkerFilterModel();
+    searchMarkers('Shopping');
 }
 
 /** Make a request to Foursquare and search locations near the neighborhood, based on the query passed as parameter. */
 function searchMarkers(query) {
-
     $.ajax({
-        url: `https://api.foursquare.com/v2/venues/search?ll=${neighborhoodLat},${neighborhoodLng}&client_id=QMKGZH03TVTVEKQ0E1YFX43GU3TUBD1IGJJV1JL5RK33U4HV&client_secret=3Y1AGL4W34OLCKD2LCHM2NK51XSUMIKNH55BTP1F1X5K0B32&query=${query}&v=20180521`,
-        type: 'GET',
-        success: function (data) {
-            data.response.venues.forEach(venue => {
-                createMarker(venue);
-            });
-        },
-        error: function (data) {
-            alert('Fail to retrieve information on Foursquare to create markers.');
-        }
+        url: `https://api.foursquare.com/v2/venues/search?ll=${neighborhoodLat},${neighborhoodLng}&client_id=QMKGZH03TVTVEKQ0E1YFX43GU3TUBD1IGJJV1JL5RK33U4HV&client_secret=3Y1AGL4W34OLCKD2LCHM2NK51XSUMIKNH55BTP1F1X5K0B32&query=${query}&limit=10&v=20180521`,
+        type: 'GET'
+    }).done(function (data) {
+        data.response.venues.forEach(venue => {
+            createMarker(venue);
+        });
+
+        createMarkerFilterModel();
+    }).fail(function (xhr, status, errorThrown) {
+        alert(`Fail to retrieve information on Foursquare to create markers. Error: ${errorThrown}`);
     });
 }
 
@@ -40,34 +41,42 @@ function createMarker(venue) {
         position: { lat: venue.location.lat, lng: venue.location.lng },
         map: map,
         animation: google.maps.Animation.DROP,
-        title: venue.name
+        title: venue.name,
+        formattedAddress: venue.location.formattedAddress
     });
 
-    let infowindow = createInfoWindow(venue, marker);
     marker.addListener('click', function () {
-        infowindow.open(map, marker);
-        marker.setAnimation(google.maps.Animation.BOUNCE);
+        showInfoWindow(marker);
     });
     markers.push(marker);
 }
 
-/** Create an info window with venue's name and address. In addition, add an image based on its lat/lng, using street view API. */
-function createInfoWindow(venue, marker) {
-    let infoWindowContent = `<h3>${venue.name}</h3>`;
-    infoWindowContent += `<h4><i class="fas fa-map-marker"></i> Location:</h4>`;
-    venue.location.formattedAddress.forEach(address => {
-        infoWindowContent += `<p>${address}</p>`
-    })
-    infoWindowContent += `<p><i class="fab fa-foursquare"> Information provided by Foursquare.</i></p>`;
-    infoWindowContent += `<img class="info-window-image" src="https://maps.googleapis.com/maps/api/streetview?size=200x200&location=${venue.location.lat},${venue.location.lng}&key=AIzaSyAQxelamEHII2I9tYxyCRB__teIQojuTWM" >`;
-    var infowindow = new google.maps.InfoWindow({
-        content: infoWindowContent
+/** Show info window when marker or list item has clicked. */
+function showInfoWindow(marker) {
+    markers.forEach(marker => {
+        marker.setAnimation(null);
     });
+
+    infowindow.setContent(createContentInfoWindow(marker));
+    infowindow.open(map, marker);
 
     infowindow.addListener('closeclick', function () {
         marker.setAnimation(null);
     })
-    return infowindow;
+    marker.setAnimation(google.maps.Animation.BOUNCE);
+}
+
+/** Create content of info window with venue's name and address. In addition, add an image based on its lat/lng, using street view API. */
+function createContentInfoWindow(marker) {
+    let infoWindowContent = '<div class="card" style="width: 18rem;">';
+    infoWindowContent += `<img class="card-img-top" src="https://maps.googleapis.com/maps/api/streetview?size=150x150&location=${marker.internalPosition.lat()},${marker.internalPosition.lng()}&key=AIzaSyAQxelamEHII2I9tYxyCRB__teIQojuTWM" alt="Shopping Google Street View">`;
+    infoWindowContent += '<div class="card-body">';
+    infoWindowContent += `<h5 class="card-title">${marker.title}</h5>`;
+    marker.formattedAddress.forEach(address => {
+        infoWindowContent += `<p class="card-text">${address}</p>`;
+    });
+    infoWindowContent += '</div></div>';
+    return infoWindowContent;
 }
 
 /** Clear all markers on the map when user change the filter marker. */
@@ -78,17 +87,55 @@ function clearMarkers() {
 }
 
 /** Model to filter markers using Knockout. */
-var MarkerFilterModel = function (markerFilter) {
-    this.markerFilter = ko.observable(markerFilter);
+var MarkerFilterModel = function () {
+    this.markerFilter = ko.observable();
+    this.markers = ko.observableArray();
 };
+
+/** Show info window when click an item on the list. */
+function openMarker() {
+    showInfoWindow(this);
+}
 
 /** Create filter model and add behavior to clear markers and make a new search.*/
 function createMarkerFilterModel() {
     let filterModel = new MarkerFilterModel();
-    filterModel.markerFilter.subscribe(function (newFilter) {
-        clearMarkers();
+    filterModel.markers = ko.observable(this.markers);
 
-        searchMarkers(newFilter);
-    });
+    filterModel.filteredMarkers = ko.computed(function () {
+        infowindow.close();
+        if (!filterModel.markerFilter()) {
+            return resetMarkers(filterModel);
+        } else {
+            return filterMarkers(filterModel);
+        }
+    }, filterModel)
+
     ko.applyBindings(filterModel);
+}
+
+/** Reset markers in case a search with an empty string happens. */
+function resetMarkers(filterModel) {
+    filterModel.markers().forEach(marker => {
+        if (!marker.getMap()) {
+            marker.setMap(map);
+        }
+        marker.setAnimation(google.maps.Animation.DROP);
+    })
+    return filterModel.markers();
+}
+
+/** Filter marker by input. */
+function filterMarkers(filterModel) {
+    var filter = filterModel.markerFilter().toLowerCase();
+    return ko.utils.arrayFilter(filterModel.markers(), function (marker) {
+        if (marker.title.toLowerCase().indexOf(filter) > -1) {
+            marker.setMap(this.map);
+            marker.setAnimation(google.maps.Animation.DROP);
+            return true;
+        } else {
+            marker.setMap(null);
+            return false;
+        }
+    })
 }

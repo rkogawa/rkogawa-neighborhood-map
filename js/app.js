@@ -25,9 +25,7 @@ function searchMarkers(query) {
         url: `https://api.foursquare.com/v2/venues/search?ll=${neighborhoodLat},${neighborhoodLng}&client_id=QMKGZH03TVTVEKQ0E1YFX43GU3TUBD1IGJJV1JL5RK33U4HV&client_secret=3Y1AGL4W34OLCKD2LCHM2NK51XSUMIKNH55BTP1F1X5K0B32&query=${query}&limit=10&v=20180521`,
         type: 'GET'
     }).done(function (data) {
-        data.response.venues.forEach(venue => {
-            createMarker(venue);
-        });
+        data.response.venues.forEach(createMarker);
 
         createMarkerFilterModel();
     }).fail(function (xhr, status, errorThrown) {
@@ -81,9 +79,9 @@ function createContentInfoWindow(marker) {
 
 /** Clear all markers on the map when user change the filter marker. */
 function clearMarkers() {
-    for (var i = 0; i < markers.length; i++) {
-        markers[i].setMap(null);
-    }
+    markers.forEach(marker => {
+        marker.setMap(null);
+    })
 }
 
 /** Model to filter markers using Knockout. */
@@ -138,4 +136,9 @@ function filterMarkers(filterModel) {
             return false;
         }
     })
+}
+
+/** Give feedback to user if a problem in Google request happens. */
+function googleError() {
+    alert('Fail to retrieve information on Google to create map.');
 }
